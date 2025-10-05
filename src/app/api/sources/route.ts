@@ -1,13 +1,27 @@
 // src/app/api/sources/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
 import { customSources } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-// Helper function to get userId from session/auth
-async function getUserId(request: NextRequest): Promise<number | null> {
-  // TODO: Implement proper authentication
-  return 1;
+// Helper function to get userId from session
+async function getUserId(): Promise<number | null> {
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user) {
+      return null;
+    }
+
+    // Get user ID from session (it's stored as string, convert to number)
+    const userId = (session.user as any).id;
+    return userId ? parseInt(userId) : null;
+  } catch (error) {
+    console.error("Error getting user ID:", error);
+    return null;
+  }
 }
 
 const DEFAULT_SOURCES = [
@@ -22,19 +36,19 @@ const DEFAULT_SOURCES = [
   "other",
 ];
 
-// GET - Fetch all sources (default + custom)
+// GET - Fetch all sources (default + custom for this user only)
 export async function GET(request: NextRequest) {
   try {
-    const userId = await getUserId(request);
+    const userId = await getUserId();
 
     if (!userId) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized. Please sign in." },
         { status: 401 }
       );
     }
 
-    // Fetch custom sources for this user
+    // Fetch custom sources for THIS USER ONLY
     const userCustomSources = await db
       .select()
       .from(customSources)
@@ -60,11 +74,11 @@ export async function GET(request: NextRequest) {
 // POST - Add a new custom source
 export async function POST(request: NextRequest) {
   try {
-    const userId = await getUserId(request);
+    const userId = await getUserId();
 
     if (!userId) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized. Please sign in." },
         { status: 401 }
       );
     }
@@ -89,7 +103,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if custom source already exists for this user
+    // Check if custom source already exists for THIS USER
     const existing = await db
       .select()
       .from(customSources)
@@ -104,7 +118,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Add new custom source
+    // Add new custom source for THIS USER
     const newSource = await db
       .insert(customSources)
       .values({
