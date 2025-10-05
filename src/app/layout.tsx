@@ -8,8 +8,8 @@ import Navbar from "./_components/Navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Save URL",
-  description: "Save Your URL",
+  title: "Save & Organize URLs",
+  description: "Easily save, organize, and access your important URLs with custom categories.",
 };
 
 export default function RootLayout({
