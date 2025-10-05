@@ -1,24 +1,55 @@
 // // src/app/page.tsx
-
 // "use client";
 
 // import { useRouter } from "next/navigation";
 // import { useState, useEffect, useRef } from 'react';
 // import { useSession } from 'next-auth/react';
-// import { Link2, Sparkles, Tag, FileText, Zap, Check, AlertCircle, ExternalLink } from 'lucide-react';
+// import { Link2, Sparkles, Tag, FileText, Zap, Check, AlertCircle, ExternalLink, Lock, Globe, Users } from 'lucide-react';
 
 // const defaultCategories = ["education", "music", "movies", "documents", "tech", "news", "social", "other"];
 // const defaultSources = ["youtube", "facebook", "linkedin", "twitter", "instagram", "github", "medium", "reddit", "other"];
+
+// interface Group {
+//   id: number;
+//   name: string;
+//   isOwner: boolean;
+// }
 
 // export default function HomePage() {
 //   const router = useRouter();
 //   const { status } = useSession();
 //   const [formData, setFormData] = useState({
-//     url: "", title: "", source: "", category: "", tags: "", description: ""
+//     url: "", 
+//     title: "", 
+//     source: "", 
+//     category: "", 
+//     tags: "", 
+//     description: "", 
+//     visibility: "private", 
+//     groupId: null as number | null
 //   });
+
+//   useEffect(() => {
+//     const disableScrollOnLargeScreen = () => {
+//       if (window.innerWidth >= 1024) {
+//         document.body.style.overflow = 'hidden';
+//       } else {
+//         document.body.style.overflow = 'unset';
+//       }
+//     };
+
+//     disableScrollOnLargeScreen();
+//     window.addEventListener('resize', disableScrollOnLargeScreen);
+
+//     return () => {
+//       document.body.style.overflow = 'unset';
+//       window.removeEventListener('resize', disableScrollOnLargeScreen);
+//     };
+//   }, []);
   
 //   const [categories, setCategories] = useState<string[]>(defaultCategories);
 //   const [sources, setSources] = useState<string[]>(defaultSources);
+//   const [groups, setGroups] = useState<Group[]>([]);
 //   const [categoryInput, setCategoryInput] = useState("");
 //   const [sourceInput, setSourceInput] = useState("");
 //   const [showCategorySuggestions, setShowCategorySuggestions] = useState(false);
@@ -56,6 +87,18 @@
 //       }
 //     } catch (err) {
 //       console.error("Failed to fetch sources:", err);
+//     }
+//   };
+
+//   const fetchGroups = async () => {
+//     try {
+//       const response = await fetch("/api/groups");
+//       if (response.ok) {
+//         const data = await response.json();
+//         setGroups(data.groups);
+//       }
+//     } catch (err) {
+//       console.error("Failed to fetch groups:", err);
 //     }
 //   };
 
@@ -173,6 +216,13 @@
 //     setError("");
 //     setSuccess("");
 
+//     // Validate group selection for group visibility
+//     if (formData.visibility === "group" && !formData.groupId) {
+//       setError("Please select a group for group visibility");
+//       setIsLoading(false);
+//       return;
+//     }
+
 //     if (formData.category && !categories.includes(formData.category.toLowerCase())) {
 //       await addCustomCategory(formData.category);
 //     }
@@ -193,13 +243,28 @@
 //       if (response.ok) {
 //         setSuccess("Link saved successfully!");
         
-//         setFormData({ url: "", title: "", source: "", category: "", tags: "", description: "" });
+//         setFormData({ 
+//           url: "", 
+//           title: "", 
+//           source: "", 
+//           category: "", 
+//           tags: "", 
+//           description: "",
+//           visibility: "private", 
+//           groupId: null
+//         });
 //         setCategoryInput("");
 //         setSourceInput("");
 //         setSourceMessage("");
         
 //         setTimeout(() => {
-//           router.push("/links");
+//           if (formData.visibility === "public") {
+//             router.push("/public");
+//           } else if (formData.visibility === "group") {
+//             router.push("/groups");
+//           } else {
+//             router.push("/links");
+//           }
 //         }, 1500);
 //       } else {
 //         setError(data.error || "Failed to save link");
@@ -214,6 +279,7 @@
 //   useEffect(() => {
 //     fetchCategories();
 //     fetchSources();
+//     fetchGroups();
 //   }, []);
 
 //   useEffect(() => {
@@ -269,6 +335,13 @@
 //     return () => document.removeEventListener('mousedown', handleClickOutside);
 //   }, []);
 
+//   // Reset groupId when visibility changes
+//   useEffect(() => {
+//     if (formData.visibility !== "group") {
+//       setFormData(prev => ({ ...prev, groupId: null }));
+//     }
+//   }, [formData.visibility]);
+
 //   if (status === "loading") {
 //     return (
 //       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -321,10 +394,10 @@
 //           )}
 
 //           {/* Form */}
-//           <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+//           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
 //             {/* URL Field */}
 //             <div className="group transform transition-all duration-300 hover:scale-[1.01]">
-//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-2">
+//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-1.5">
 //                 <Link2 className="w-4 h-4" />
 //                 URL <span className="text-pink-400">*</span>
 //                 {isAutoDetecting && (
@@ -339,14 +412,14 @@
 //                 required
 //                 value={formData.url}
 //                 onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-//                 className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
+//                 className="w-full px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
 //                 placeholder="https://example.com"
 //               />
 //             </div>
 
 //             {/* Title Field */}
 //             <div className="group transform transition-all duration-300 hover:scale-[1.01]">
-//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-2">
+//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-1.5">
 //                 <FileText className="w-4 h-4" />
 //                 Title <span className="text-gray-400 text-xs font-normal">(auto-fetched)</span>
 //               </label>
@@ -354,7 +427,7 @@
 //                 type="text"
 //                 value={formData.title}
 //                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-//                 className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
+//                 className="w-full px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
 //                 placeholder="Title will be fetched automatically"
 //               />
 //             </div>
@@ -451,9 +524,88 @@
 //               </div>
 //             </div>
 
+//             {/* Visibility Selection */}
+//             <div className="group">
+//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-3">
+//                 <Lock className="w-4 h-4" />
+//                 Visibility <span className="text-pink-400">*</span>
+//               </label>
+//               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+//                 <button
+//                   type="button"
+//                   onClick={() => setFormData({ ...formData, visibility: "private" })}
+//                   className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+//                     formData.visibility === "private"
+//                       ? "border-purple-500 bg-purple-500/20"
+//                       : "border-white/20 bg-white/5 hover:border-white/40"
+//                   }`}
+//                 >
+//                   <Lock className="w-6 h-6 mx-auto mb-2 text-purple-300" />
+//                   <div className="text-white font-semibold text-sm">Private</div>
+//                   <div className="text-gray-400 text-xs mt-1">Only you can see</div>
+//                 </button>
+
+//                 <button
+//                   type="button"
+//                   onClick={() => setFormData({ ...formData, visibility: "public" })}
+//                   className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+//                     formData.visibility === "public"
+//                       ? "border-blue-500 bg-blue-500/20"
+//                       : "border-white/20 bg-white/5 hover:border-white/40"
+//                   }`}
+//                 >
+//                   <Globe className="w-6 h-6 mx-auto mb-2 text-blue-300" />
+//                   <div className="text-white font-semibold text-sm">Public</div>
+//                   <div className="text-gray-400 text-xs mt-1">Everyone can see</div>
+//                 </button>
+
+//                 <button
+//                   type="button"
+//                   onClick={() => setFormData({ ...formData, visibility: "group" })}
+//                   className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+//                     formData.visibility === "group"
+//                       ? "border-pink-500 bg-pink-500/20"
+//                       : "border-white/20 bg-white/5 hover:border-white/40"
+//                   }`}
+//                 >
+//                   <Users className="w-6 h-6 mx-auto mb-2 text-pink-300" />
+//                   <div className="text-white font-semibold text-sm">Group</div>
+//                   <div className="text-gray-400 text-xs mt-1">Group members only</div>
+//                 </button>
+//               </div>
+//             </div>
+
+//             {/* Group Selection (shown only when visibility is group) */}
+//             {formData.visibility === "group" && (
+//               <div className="group animate-slideDown">
+//                 <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-2">
+//                   <Users className="w-4 h-4" />
+//                   Select Group <span className="text-pink-400">*</span>
+//                 </label>
+//                 <select
+//                   value={formData.groupId || ""}
+//                   onChange={(e) => setFormData({ ...formData, groupId: parseInt(e.target.value) || null })}
+//                   className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
+//                   required={formData.visibility === "group"}
+//                 >
+//                   <option value="" className="bg-slate-800">Select a group</option>
+//                   {groups.map((group) => (
+//                     <option key={group.id} value={group.id} className="bg-slate-800">
+//                       {group.name} {group.isOwner ? "(Owner)" : "(Member)"}
+//                     </option>
+//                   ))}
+//                 </select>
+//                 {groups.length === 0 && (
+//                   <p className="text-xs text-yellow-300 mt-1">
+//                     You don't have any groups yet. Create one first!
+//                   </p>
+//                 )}
+//               </div>
+//             )}
+
 //             {/* Tags Field */}
 //             <div className="group transform transition-all duration-300 hover:scale-[1.01]">
-//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-2">
+//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-1.5">
 //                 <Tag className="w-4 h-4" />
 //                 Tags <span className="text-gray-400 text-xs font-normal">(comma-separated)</span>
 //               </label>
@@ -461,32 +613,32 @@
 //                 type="text"
 //                 value={formData.tags}
 //                 onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-//                 className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
+//                 className="w-full px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
 //                 placeholder="tutorial, javascript, react"
 //               />
 //             </div>
 
 //             {/* Description Field */}
 //             <div className="group transform transition-all duration-300 hover:scale-[1.01]">
-//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-2">
+//               <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-1.5">
 //                 <FileText className="w-4 h-4" />
 //                 Description
 //               </label>
 //               <textarea
 //                 value={formData.description}
 //                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-//                 rows={3}
-//                 className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 resize-none text-sm sm:text-base"
+//                 rows={2}
+//                 className="w-full px-4 py-2.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all duration-300 hover:bg-white/15 resize-none text-sm sm:text-base"
 //                 placeholder="Optional description"
 //               />
 //             </div>
 
 //             {/* Action Buttons */}
-//             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
+//             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
 //               <button
 //                 type="submit"
 //                 disabled={isLoading}
-//                 className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 sm:py-4 px-6 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 disabled:from-gray-500 disabled:to-gray-600 transition-all duration-300 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 disabled:scale-100 flex items-center justify-center gap-2 text-sm sm:text-base disabled:cursor-not-allowed"
+//                 className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-2.5 sm:py-3 px-6 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 disabled:from-gray-500 disabled:to-gray-600 transition-all duration-300 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 disabled:scale-100 flex items-center justify-center gap-2 text-sm sm:text-base disabled:cursor-not-allowed"
 //               >
 //                 {isLoading ? (
 //                   <>
@@ -503,7 +655,7 @@
 //               <button
 //                 type="button"
 //                 onClick={() => router.push("/links")}
-//                 className="flex-1 bg-white/10 backdrop-blur-sm border border-white/20 text-white py-3 sm:py-4 px-6 rounded-xl font-semibold hover:bg-white/20 transition-all duration-300 hover:scale-105 text-sm sm:text-base flex items-center justify-center gap-2"
+//                 className="flex-1 bg-white/10 backdrop-blur-sm border border-white/20 text-white py-2.5 sm:py-3 px-6 rounded-xl font-semibold hover:bg-white/20 transition-all duration-300 hover:scale-105 text-sm sm:text-base flex items-center justify-center gap-2"
 //               >
 //                 <ExternalLink className="w-5 h-5" />
 //                 View All Links
@@ -567,50 +719,40 @@
 
 
 
-
-// src/app/page.tsx  (10% compress)
-
+// src/app/page.tsx
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import { Link2, Sparkles, Tag, FileText, Zap, Check, AlertCircle, ExternalLink } from 'lucide-react';
+import { Link2, Sparkles, Tag, FileText, Zap, Check, AlertCircle, ExternalLink, Lock, Globe, Users } from 'lucide-react';
 
 const defaultCategories = ["education", "music", "movies", "documents", "tech", "news", "social", "other"];
 const defaultSources = ["youtube", "facebook", "linkedin", "twitter", "instagram", "github", "medium", "reddit", "other"];
+
+interface Group {
+  id: number;
+  name: string;
+  isOwner: boolean;
+}
 
 export default function HomePage() {
   const router = useRouter();
   const { status } = useSession();
   const [formData, setFormData] = useState({
-    url: "", title: "", source: "", category: "", tags: "", description: ""
+    url: "", 
+    title: "", 
+    source: "", 
+    category: "", 
+    tags: "", 
+    description: "", 
+    visibility: "private", 
+    groupId: null as number | null
   });
-
-  // Disable scrolling only on large screens (desktop/PC)
-  useEffect(() => {
-    const disableScrollOnLargeScreen = () => {
-      if (window.innerWidth >= 1024) { // lg breakpoint
-        document.body.style.overflow = 'hidden';
-      } else {
-        document.body.style.overflow = 'unset';
-      }
-    };
-
-    // Set initial state
-    disableScrollOnLargeScreen();
-
-    // Listen for resize events
-    window.addEventListener('resize', disableScrollOnLargeScreen);
-
-    return () => {
-      document.body.style.overflow = 'unset';
-      window.removeEventListener('resize', disableScrollOnLargeScreen);
-    };
-  }, []);
   
   const [categories, setCategories] = useState<string[]>(defaultCategories);
   const [sources, setSources] = useState<string[]>(defaultSources);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [categoryInput, setCategoryInput] = useState("");
   const [sourceInput, setSourceInput] = useState("");
   const [showCategorySuggestions, setShowCategorySuggestions] = useState(false);
@@ -648,6 +790,18 @@ export default function HomePage() {
       }
     } catch (err) {
       console.error("Failed to fetch sources:", err);
+    }
+  };
+
+  const fetchGroups = async () => {
+    try {
+      const response = await fetch("/api/groups");
+      if (response.ok) {
+        const data = await response.json();
+        setGroups(data.groups);
+      }
+    } catch (err) {
+      console.error("Failed to fetch groups:", err);
     }
   };
 
@@ -765,6 +919,13 @@ export default function HomePage() {
     setError("");
     setSuccess("");
 
+    // Validate group selection for group visibility
+    if (formData.visibility === "group" && !formData.groupId) {
+      setError("Please select a group for group visibility");
+      setIsLoading(false);
+      return;
+    }
+
     if (formData.category && !categories.includes(formData.category.toLowerCase())) {
       await addCustomCategory(formData.category);
     }
@@ -785,13 +946,28 @@ export default function HomePage() {
       if (response.ok) {
         setSuccess("Link saved successfully!");
         
-        setFormData({ url: "", title: "", source: "", category: "", tags: "", description: "" });
+        setFormData({ 
+          url: "", 
+          title: "", 
+          source: "", 
+          category: "", 
+          tags: "", 
+          description: "",
+          visibility: "private", 
+          groupId: null
+        });
         setCategoryInput("");
         setSourceInput("");
         setSourceMessage("");
         
         setTimeout(() => {
-          router.push("/links");
+          if (formData.visibility === "public") {
+            router.push("/public");
+          } else if (formData.visibility === "group") {
+            router.push("/groups");
+          } else {
+            router.push("/links");
+          }
         }, 1500);
       } else {
         setError(data.error || "Failed to save link");
@@ -806,6 +982,7 @@ export default function HomePage() {
   useEffect(() => {
     fetchCategories();
     fetchSources();
+    fetchGroups();
   }, []);
 
   useEffect(() => {
@@ -860,6 +1037,13 @@ export default function HomePage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Reset groupId when visibility changes
+  useEffect(() => {
+    if (formData.visibility !== "group") {
+      setFormData(prev => ({ ...prev, groupId: null }));
+    }
+  }, [formData.visibility]);
 
   if (status === "loading") {
     return (
@@ -1042,6 +1226,85 @@ export default function HomePage() {
                 )}
               </div>
             </div>
+
+            {/* Visibility Selection */}
+            <div className="group">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-3">
+                <Lock className="w-4 h-4" />
+                Visibility <span className="text-pink-400">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, visibility: "private" })}
+                  className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+                    formData.visibility === "private"
+                      ? "border-purple-500 bg-purple-500/20"
+                      : "border-white/20 bg-white/5 hover:border-white/40"
+                  }`}
+                >
+                  <Lock className="w-6 h-6 mx-auto mb-2 text-purple-300" />
+                  <div className="text-white font-semibold text-sm">Private</div>
+                  <div className="text-gray-400 text-xs mt-1">Only you can see</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, visibility: "public" })}
+                  className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+                    formData.visibility === "public"
+                      ? "border-blue-500 bg-blue-500/20"
+                      : "border-white/20 bg-white/5 hover:border-white/40"
+                  }`}
+                >
+                  <Globe className="w-6 h-6 mx-auto mb-2 text-blue-300" />
+                  <div className="text-white font-semibold text-sm">Public</div>
+                  <div className="text-gray-400 text-xs mt-1">Everyone can see</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, visibility: "group" })}
+                  className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+                    formData.visibility === "group"
+                      ? "border-pink-500 bg-pink-500/20"
+                      : "border-white/20 bg-white/5 hover:border-white/40"
+                  }`}
+                >
+                  <Users className="w-6 h-6 mx-auto mb-2 text-pink-300" />
+                  <div className="text-white font-semibold text-sm">Group</div>
+                  <div className="text-gray-400 text-xs mt-1">Group members only</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Group Selection (shown only when visibility is group) */}
+            {formData.visibility === "group" && (
+              <div className="group animate-slideDown">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-200 mb-2">
+                  <Users className="w-4 h-4" />
+                  Select Group <span className="text-pink-400">*</span>
+                </label>
+                <select
+                  value={formData.groupId || ""}
+                  onChange={(e) => setFormData({ ...formData, groupId: parseInt(e.target.value) || null })}
+                  className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white transition-all duration-300 hover:bg-white/15 text-sm sm:text-base"
+                  required={formData.visibility === "group"}
+                >
+                  <option value="" className="bg-slate-800">Select a group</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id} className="bg-slate-800">
+                      {group.name} {group.isOwner ? "(Owner)" : "(Member)"}
+                    </option>
+                  ))}
+                </select>
+                {groups.length === 0 && (
+                  <p className="text-xs text-yellow-300 mt-1">
+                    You don't have any groups yet. Create one first!
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Tags Field */}
             <div className="group transform transition-all duration-300 hover:scale-[1.01]">

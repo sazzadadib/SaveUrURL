@@ -1,5 +1,5 @@
 // src/db/schema.ts
-import { pgTable, serial, varchar, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -9,7 +9,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Links table - using text fields instead of enums for flexibility
+// Links table - now with visibility field
 export const links = pgTable("links", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -17,10 +17,31 @@ export const links = pgTable("links", {
   title: varchar("title", { length: 255 }),
   source: text("source").notNull(),
   category: text("category").notNull(),
-  tags: text("tags"), // Store as comma-separated string
+  tags: text("tags"),
   description: text("description"),
+  visibility: text("visibility").notNull().default("private"), // 'private', 'public', or 'group'
+  groupId: integer("group_id").references(() => groups.id, { onDelete: "cascade" }), // null if not group link
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Groups table
+export const groups = pgTable("groups", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Group members table
+export const groupMembers = pgTable("group_members", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(), // Email of the member
+  addedAt: timestamp("added_at").defaultNow().notNull(),
 });
 
 // Custom categories table
@@ -44,6 +65,10 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Link = typeof links.$inferSelect;
 export type NewLink = typeof links.$inferInsert;
+export type Group = typeof groups.$inferSelect;
+export type NewGroup = typeof groups.$inferInsert;
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type NewGroupMember = typeof groupMembers.$inferInsert;
 export type CustomCategory = typeof customCategories.$inferSelect;
 export type NewCustomCategory = typeof customCategories.$inferInsert;
 export type CustomSource = typeof customSources.$inferSelect;

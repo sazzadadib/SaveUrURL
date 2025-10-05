@@ -3,19 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/db";
-import { links } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { links, groups, groupMembers } from "@/db/schema";
+import { eq, and, desc, or } from "drizzle-orm";
 
-// Helper function to get userId from session
 async function getUserId(): Promise<number | null> {
   try {
     const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      return null;
-    }
-
-    // Get user ID from session (it's stored as string, convert to number)
+    if (!session?.user) return null;
     const userId = (session.user as any).id;
     return userId ? parseInt(userId) : null;
   } catch (error) {
@@ -24,26 +18,82 @@ async function getUserId(): Promise<number | null> {
   }
 }
 
-// GET - Fetch all links for the authenticated user
+async function getUserEmail(): Promise<string | null> {
+  try {
+    const session = await getServerSession(authOptions);
+    return session?.user?.email || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// GET - Fetch all links for the authenticated user (private + groups they're in)
 export async function GET(request: NextRequest) {
   try {
     const userId = await getUserId();
+    const userEmail = await getUserEmail();
 
-    if (!userId) {
+    if (!userId || !userEmail) {
       return NextResponse.json(
         { error: "Unauthorized. Please sign in." },
         { status: 401 }
       );
     }
 
-    const userLinks = await db
+    // Get user's private and public links
+    const privateLinks = await db
       .select()
       .from(links)
-      .where(eq(links.userId, userId))
+      .where(
+        and(
+          eq(links.userId, userId),
+          or(
+            eq(links.visibility, "private"),
+            eq(links.visibility, "public")
+          )
+        )
+      )
       .orderBy(desc(links.createdAt));
 
+    // Get groups where user is owner or member
+    const ownedGroups = await db
+      .select()
+      .from(groups)
+      .where(eq(groups.ownerId, userId));
+
+    const memberGroups = await db
+      .select({ groupId: groupMembers.groupId })
+      .from(groupMembers)
+      .where(eq(groupMembers.email, userEmail));
+
+    const allGroupIds = [
+      ...ownedGroups.map(g => g.id),
+      ...memberGroups.map(m => m.groupId)
+    ];
+
+    // Get links from groups
+    let groupLinks: any[] = [];
+    if (allGroupIds.length > 0) {
+      for (const groupId of allGroupIds) {
+        const linksInGroup = await db
+          .select()
+          .from(links)
+          .where(
+            and(
+              eq(links.visibility, "group"),
+              eq(links.groupId, groupId)
+            )
+          )
+          .orderBy(desc(links.createdAt));
+        
+        groupLinks = [...groupLinks, ...linksInGroup];
+      }
+    }
+
+    const allLinks = [...privateLinks, ...groupLinks];
+
     return NextResponse.json(
-      { links: userLinks },
+      { links: allLinks },
       { status: 200 }
     );
   } catch (error) {
@@ -59,8 +109,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const userId = await getUserId();
+    const userEmail = await getUserEmail();
 
-    if (!userId) {
+    if (!userId || !userEmail) {
       return NextResponse.json(
         { error: "Unauthorized. Please sign in." },
         { status: 401 }
@@ -68,7 +119,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { url, title, source, category, tags, description } = body;
+    const { url, title, source, category, tags, description, visibility, groupId } = body;
 
     // Validation
     if (!url || !source || !category) {
@@ -88,7 +139,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the link for the authenticated user
+    // Validate visibility
+    const validVisibilities = ["private", "public", "group"];
+    const finalVisibility = visibility && validVisibilities.includes(visibility) 
+      ? visibility 
+      : "private";
+
+    // If group visibility, validate group access
+    let finalGroupId = null;
+    if (finalVisibility === "group") {
+      if (!groupId) {
+        return NextResponse.json(
+          { error: "Group ID is required for group visibility" },
+          { status: 400 }
+        );
+      }
+
+      // Check if user is owner or member of the group
+      const group = await db
+        .select()
+        .from(groups)
+        .where(eq(groups.id, groupId))
+        .limit(1);
+
+      if (group.length === 0) {
+        return NextResponse.json(
+          { error: "Group not found" },
+          { status: 404 }
+        );
+      }
+
+      const isOwner = group[0].ownerId === userId;
+      
+      if (!isOwner) {
+        const membership = await db
+          .select()
+          .from(groupMembers)
+          .where(
+            and(
+              eq(groupMembers.groupId, groupId),
+              eq(groupMembers.email, userEmail)
+            )
+          )
+          .limit(1);
+
+        if (membership.length === 0) {
+          return NextResponse.json(
+            { error: "You don't have access to this group" },
+            { status: 403 }
+          );
+        }
+      }
+
+      finalGroupId = groupId;
+    }
+
+    // Create the link
     const newLink = await db
       .insert(links)
       .values({
@@ -99,6 +205,8 @@ export async function POST(request: NextRequest) {
         category,
         tags: tags || null,
         description: description || null,
+        visibility: finalVisibility,
+        groupId: finalGroupId,
       })
       .returning();
 
@@ -137,7 +245,6 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Delete only if the link belongs to the authenticated user
     const deletedLink = await db
       .delete(links)
       .where(and(eq(links.id, parseInt(linkId)), eq(links.userId, userId)))
@@ -167,8 +274,9 @@ export async function DELETE(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const userId = await getUserId();
+    const userEmail = await getUserEmail();
 
-    if (!userId) {
+    if (!userId || !userEmail) {
       return NextResponse.json(
         { error: "Unauthorized. Please sign in." },
         { status: 401 }
@@ -176,7 +284,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, url, title, source, category, tags, description } = body;
+    const { id, url, title, source, category, tags, description, visibility, groupId } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -197,16 +305,62 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Handle visibility and group changes
+    let finalGroupId: number | null | undefined = undefined;
+    if (visibility === "group" && groupId) {
+      // Verify group access
+      const group = await db
+        .select()
+        .from(groups)
+        .where(eq(groups.id, groupId))
+        .limit(1);
+
+      if (group.length === 0) {
+        return NextResponse.json(
+          { error: "Group not found" },
+          { status: 404 }
+        );
+      }
+
+      const isOwner = group[0].ownerId === userId;
+      
+      if (!isOwner) {
+        const membership = await db
+          .select()
+          .from(groupMembers)
+          .where(
+            and(
+              eq(groupMembers.groupId, groupId),
+              eq(groupMembers.email, userEmail)
+            )
+          )
+          .limit(1);
+
+        if (membership.length === 0) {
+          return NextResponse.json(
+            { error: "You don't have access to this group" },
+            { status: 403 }
+          );
+        }
+      }
+
+      finalGroupId = groupId;
+    } else if (visibility !== "group") {
+      finalGroupId = null;
+    }
+
     // Update only if the link belongs to the authenticated user
     const updatedLink = await db
       .update(links)
       .set({
         url: url || undefined,
-        title: title || null,
+        title: title !== undefined ? title : undefined,
         source: source || undefined,
         category: category || undefined,
-        tags: tags || null,
-        description: description || null,
+        tags: tags !== undefined ? tags : undefined,
+        description: description !== undefined ? description : undefined,
+        visibility: visibility || undefined,
+        groupId: finalGroupId !== undefined ? finalGroupId : undefined,
         updatedAt: new Date(),
       })
       .where(and(eq(links.id, id), eq(links.userId, userId)))
