@@ -26,18 +26,18 @@ export async function POST(request: NextRequest) {
       .where(eq(users.email, email.toLowerCase()))
       .limit(1);
 
-    // Always return success to prevent email enumeration
+    // Return error if user doesn't exist
     if (!user || user.length === 0) {
       return NextResponse.json(
-        { message: "If an account exists, a reset code has been sent" },
-        { status: 200 }
+        { error: "No account found with this email address" },
+        { status: 404 }
       );
     }
 
     // Check if user is verified
     if (!user[0].isVerified) {
       return NextResponse.json(
-        { error: "Please verify your email first" },
+        { error: "Please verify your email first before resetting password" },
         { status: 400 }
       );
     }
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     if (!emailResult.success) {
       console.error("Email sending error:", emailResult.error);
       return NextResponse.json(
-        { error: "Failed to send reset email" },
+        { error: "Failed to send reset email. Please try again." },
         { status: 500 }
       );
     }
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Forgot password error:", error);
     return NextResponse.json(
-      { error: "An error occurred" },
+      { error: "An error occurred. Please try again." },
       { status: 500 }
     );
   }

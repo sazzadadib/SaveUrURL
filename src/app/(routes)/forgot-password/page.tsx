@@ -16,6 +16,7 @@ export default function ForgotPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess(false);
     setLoading(true);
 
     try {
@@ -28,16 +29,19 @@ export default function ForgotPassword() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Show the error message from the API
         setError(data.error || "Failed to send reset code");
-      } else {
-        setSuccess(true);
-        setTimeout(() => {
-          router.push(`/reset-password?email=${encodeURIComponent(email)}`);
-        }, 2000);
+        setLoading(false);
+        return; // Don't redirect if there's an error
       }
+
+      // Only show success and redirect if response is OK
+      setSuccess(true);
+      setTimeout(() => {
+        router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+      }, 2000);
     } catch (error) {
       setError("An error occurred. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
@@ -93,7 +97,7 @@ export default function ForgotPassword() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || success}
             className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-4 px-4 rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all duration-300 font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 disabled:hover:scale-100 flex items-center justify-center gap-2"
           >
             {loading ? (
