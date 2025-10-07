@@ -3,10 +3,25 @@ import { pgTable, serial, varchar, text, timestamp, integer, boolean } from "dri
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  name: text("name").notNull(),
+  isVerified: boolean("is_verified").default(false).notNull(),
+  verificationCode: text("verification_code"),
+  verificationCodeExpiry: timestamp("verification_code_expiry"),
+  resetPasswordCode: text("reset_password_code"),
+  resetPasswordCodeExpiry: timestamp("reset_password_code_expiry"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Create a new table for storing temporary verification attempts
+export const verificationAttempts = pgTable("verification_attempts", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  attemptCount: integer("attempt_count").default(0).notNull(),
+  lastAttempt: timestamp("last_attempt").defaultNow().notNull(),
+  blockedUntil: timestamp("blocked_until"),
 });
 
 // Links table - now with visibility field

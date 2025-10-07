@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState, FormEvent, useEffect } from "react";
 import Link from "next/link";
-import { Mail, Lock, User, Calendar, UserPlus, Sparkles } from 'lucide-react';
+import { Mail, Lock, User, UserPlus, Sparkles, Eye, EyeOff } from 'lucide-react';
 
 export default function SignUp() {
   const router = useRouter();
@@ -16,12 +16,31 @@ export default function SignUp() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState<string[]>([]);
 
   useEffect(() => {
     if (status === "authenticated") {
       router.push("/");
     }
   }, [status, router]);
+
+  useEffect(() => {
+    // Check password strength
+    const errors: string[] = [];
+    const pwd = formData.password;
+    
+    if (pwd.length > 0) {
+      if (pwd.length < 8) errors.push("At least 8 characters");
+      if (!/[A-Z]/.test(pwd)) errors.push("One uppercase letter");
+      if (!/[a-z]/.test(pwd)) errors.push("One lowercase letter");
+      if (!/[0-9]/.test(pwd)) errors.push("One number");
+      
+      setPasswordStrength(errors);
+    } else {
+      setPasswordStrength([]);
+    }
+  }, [formData.password]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -49,7 +68,8 @@ export default function SignUp() {
       if (!response.ok) {
         setError(data.error || "Something went wrong");
       } else {
-        router.push("/signin");
+        // Redirect to verification page with email
+        router.push(`/verify-email?email=${encodeURIComponent(formData.email)}`);
       }
     } catch (error) {
       setError("An error occurred. Please try again.");
@@ -134,23 +154,51 @@ export default function SignUp() {
               <Lock className="w-4 h-4" />
               Password
             </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              minLength={6}
-              className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all text-sm sm:text-base"
-              placeholder="At least 6 characters"
-            />
-            <p className="text-xs text-gray-400 mt-1">Minimum 6 characters required</p>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                minLength={8}
+                className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all pr-12 text-sm sm:text-base"
+                placeholder="Create a strong password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+            
+            {formData.password && passwordStrength.length > 0 && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-gray-400">Password must contain:</p>
+                {passwordStrength.map((req, index) => (
+                  <p key={index} className="text-xs text-red-300 flex items-center gap-1">
+                    <span>•</span> {req}
+                  </p>
+                ))}
+              </div>
+            )}
+            
+            {formData.password && passwordStrength.length === 0 && (
+              <p className="text-xs text-green-300 mt-2 flex items-center gap-1">
+                ✓ Strong password
+              </p>
+            )}
           </div>
-
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || passwordStrength.length > 0}
             className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 sm:py-4 px-4 rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all duration-300 font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 disabled:hover:scale-100 flex items-center justify-center gap-2 text-sm sm:text-base"
           >
             {loading ? (

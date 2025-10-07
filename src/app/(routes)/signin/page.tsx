@@ -29,15 +29,25 @@ export default function SignIn() {
 
     try {
       const result = await signIn("credentials", {
-        email,
+        email: email.toLowerCase(),
         password,
         redirect: false,
       });
 
       if (result?.error) {
-        setError("Invalid email or password");
+        // Check if error is about email verification
+        if (result.error.includes("verify your email")) {
+          setError("Please verify your email before signing in.");
+          // Optionally redirect to verification page
+          setTimeout(() => {
+            router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+          }, 2000);
+        } else {
+          setError("Invalid email or password");
+        }
       } else {
         router.push("/");
+        router.refresh();
       }
     } catch (error) {
       setError("An error occurred. Please try again.");
@@ -125,6 +135,14 @@ export default function SignIn() {
                   <Eye className="w-5 h-5" />
                 )}
               </button>
+            </div>
+            <div className="mt-2 text-right">
+              <Link 
+                href="/forgot-password" 
+                className="text-xs text-purple-300 hover:text-purple-200 hover:underline transition-colors"
+              >
+                Forgot password?
+              </Link>
             </div>
           </div>
 

@@ -18,25 +18,36 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Invalid credentials");
         }
+
         const user = await db
           .select()
           .from(users)
-          .where(eq(users.email, credentials.email))
+          .where(eq(users.email, credentials.email.toLowerCase()))
           .limit(1);
+
         if (!user || user.length === 0) {
           throw new Error("No user found with this email");
         }
+
+        // Check if email is verified
+        if (!user[0].isVerified) {
+          throw new Error("Please verify your email before signing in");
+        }
+
         const isPasswordValid = await bcrypt.compare(
           credentials.password,
           user[0].password
         );
+
         if (!isPasswordValid) {
           throw new Error("Invalid password");
         }
+
         return {
           id: user[0].id.toString(),
           email: user[0].email,
           name: user[0].name,
+          isVerified: user[0].isVerified,
         };
       },
     }),
@@ -45,23 +56,38 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.age = (user as any).age;
+        token.email = user.email;
+        token.isVerified = (user as any).isVerified;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).id = token.id;
-        (session.user as any).age = token.age;
+        (session.user as any).email = token.email;
+        (session.user as any).isVerified = token.isVerified;
       }
       return session;
     },
   },
   pages: {
     signIn: "/signin",
+    error: "/signin",
   },
   session: {
     strategy: "jwt",
+    maxAge: 7 * 24 * 60 * 60, // 7 days
   },
   secret: process.env.NEXTAUTH_SECRET,
+  cookies: {
+    sessionToken: {
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
 };
