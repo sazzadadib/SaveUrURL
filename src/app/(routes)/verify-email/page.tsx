@@ -247,7 +247,7 @@ function VerifyEmailContent() {
 export default function VerifyEmail() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950">
         <div className="flex flex-col items-center gap-4">
           <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-purple-300 text-sm">Loading verification page...</p>

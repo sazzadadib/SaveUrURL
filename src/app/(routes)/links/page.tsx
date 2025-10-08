@@ -1,10 +1,9 @@
-// src/app/(routes)/links/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Search, Filter, X, Trash2, ExternalLink, Plus, Grid3x3, List, Calendar } from 'lucide-react';
+import { Search, Filter, X, Trash2, ExternalLink, Plus, Grid3x3, List, Calendar, Edit2, Copy, Check, ChevronDown, SortAsc, Star, StarOff, Archive, Download, Share2, Eye, EyeOff } from 'lucide-react';
 
 interface Link {
   id: number;
@@ -15,28 +14,37 @@ interface Link {
   tags: string;
   description: string;
   createdAt: string;
+  visibility?: string;
+  groupId?: number;
 }
 
-export default function LinksPage() {
+export default function ImprovedLinksPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
+  
   const [links, setLinks] = useState<Link[]>([]);
   const [filteredLinks, setFilteredLinks] = useState<Link[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'title' | 'category'>('newest');
+  const [showFilters, setShowFilters] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [selectedLinks, setSelectedLinks] = useState<Set<number>>(new Set());
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
   
   const [categories, setCategories] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
-
-  const { data: session, status } = useSession();
-
+  
   const [filters, setFilters] = useState({
     category: "",
     source: "",
     search: "",
+    visibility: "",
+    favorites: false
   });
 
-  // Define functions BEFORE useEffect
+  // Fetch functions
   const fetchCategories = async () => {
     try {
       const response = await fetch("/api/categories");
@@ -82,7 +90,27 @@ export default function LinksPage() {
     }
   };
 
-  const applyFilters = () => {
+  // Auth check
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/signin");
+    }
+  }, [status, router]);
+
+  // Initial data fetch
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetchLinks();
+      fetchCategories();
+      fetchSources();
+    }
+  }, [status]);
+
+  useEffect(() => {
+    applyFiltersAndSort();
+  }, [filters, links, sortBy]);
+
+  const applyFiltersAndSort = () => {
     let filtered = [...links];
 
     if (filters.category) {
@@ -93,17 +121,52 @@ export default function LinksPage() {
       filtered = filtered.filter((link) => link.source === filters.source);
     }
 
+    if (filters.visibility) {
+      filtered = filtered.filter((link) => link.visibility === filters.visibility);
+    }
+
+    if (filters.favorites) {
+      filtered = filtered.filter((link) => favorites.has(link.id));
+    }
+
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter(
         (link) =>
           link.title?.toLowerCase().includes(searchLower) ||
           link.description?.toLowerCase().includes(searchLower) ||
-          link.tags?.toLowerCase().includes(searchLower)
+          link.tags?.toLowerCase().includes(searchLower) ||
+          link.url?.toLowerCase().includes(searchLower)
       );
     }
 
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'newest':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case 'oldest':
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        case 'title':
+          return (a.title || '').localeCompare(b.title || '');
+        case 'category':
+          return a.category.localeCompare(b.category);
+        default:
+          return 0;
+      }
+    });
+
     setFilteredLinks(filtered);
+  };
+
+  const toggleFavorite = (id: number) => {
+    const newFavorites = new Set(favorites);
+    if (newFavorites.has(id)) {
+      newFavorites.delete(id);
+    } else {
+      newFavorites.add(id);
+    }
+    setFavorites(newFavorites);
   };
 
   const handleDelete = async (id: number) => {
@@ -116,6 +179,11 @@ export default function LinksPage() {
 
       if (response.ok) {
         setLinks(links.filter((link) => link.id !== id));
+        setSelectedLinks(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
       } else {
         alert("Failed to delete link");
       }
@@ -124,149 +192,194 @@ export default function LinksPage() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedLinks.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedLinks.size} link(s)?`)) return;
+
+    try {
+      const deletePromises = Array.from(selectedLinks).map(id =>
+        fetch(`/api/links?id=${id}`, { method: "DELETE" })
+      );
+      
+      await Promise.all(deletePromises);
+      
+      setLinks(links.filter((link) => !selectedLinks.has(link.id)));
+      setSelectedLinks(new Set());
+    } catch (err) {
+      alert("An error occurred while deleting links");
+    }
+  };
+
+  const copyToClipboard = (url: string, id: number) => {
+    navigator.clipboard.writeText(url);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const toggleSelectLink = (id: number) => {
+    const newSelected = new Set(selectedLinks);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedLinks(newSelected);
+  };
+
   const clearFilters = () => {
-    setFilters({ category: "", source: "", search: "" });
+    setFilters({ category: "", source: "", search: "", visibility: "", favorites: false });
   };
 
   const getSourceIcon = (source: string) => {
     const icons: { [key: string]: string } = {
-      youtube: "🎥",
-      facebook: "👥",
-      linkedin: "💼",
-      twitter: "🐦",
-      instagram: "📷",
-      github: "💻",
-      medium: "📝",
-      reddit: "🤖",
-      other: "🔗",
+      youtube: "🎥", facebook: "👥", linkedin: "💼", twitter: "🦤",
+      instagram: "📷", github: "💻", medium: "📝", reddit: "🤖", other: "🔗"
     };
     return icons[source.toLowerCase()] || "🔗";
   };
 
   const getCategoryColor = (category: string) => {
     const colors: { [key: string]: string } = {
-      education: "bg-blue-100 text-blue-800 border-blue-200",
-      music: "bg-purple-100 text-purple-800 border-purple-200",
-      movies: "bg-red-100 text-red-800 border-red-200",
-      documents: "bg-gray-100 text-gray-800 border-gray-200",
-      tech: "bg-green-100 text-green-800 border-green-200",
-      news: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      social: "bg-pink-100 text-pink-800 border-pink-200",
-      other: "bg-indigo-100 text-indigo-800 border-indigo-200",
+      education: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+      music: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+      movies: "bg-red-500/20 text-red-300 border-red-500/30",
+      documents: "bg-gray-500/20 text-gray-300 border-gray-500/30",
+      tech: "bg-green-500/20 text-green-300 border-green-500/30",
+      news: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+      social: "bg-pink-500/20 text-pink-300 border-pink-500/30",
+      other: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30"
     };
-    return colors[category.toLowerCase()] || "bg-indigo-100 text-indigo-800 border-indigo-200";
+    return colors[category.toLowerCase()] || colors.other;
   };
 
-  // useEffect hooks AFTER function definitions
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/signin");
-    }
-  }, [status, router]);
+  const getVisibilityIcon = (visibility?: string) => {
+    if (visibility === 'public') return <Eye className="w-3 h-3" />;
+    if (visibility === 'group') return <Share2 className="w-3 h-3" />;
+    return <EyeOff className="w-3 h-3" />;
+  };
 
-  useEffect(() => {
-    fetchLinks();
-    fetchCategories();
-    fetchSources();
-  }, []);
+  const activeFiltersCount = [
+    filters.category,
+    filters.source,
+    filters.search,
+    filters.visibility,
+    filters.favorites && 'favorites'
+  ].filter(Boolean).length;
 
-  useEffect(() => {
-    applyFilters();
-  }, [filters, links]);
+  const exportLinks = () => {
+    const dataStr = JSON.stringify(filteredLinks, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `links-export-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+  };
 
-  if (status === "loading") {
+  // Loading state
+  if (status === "loading" || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="animate-pulse">
-          <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading links...</p>
         </div>
       </div>
     );
   }
 
+  // Unauthenticated state
   if (!session) {
     return null;
   }
 
-  const activeFiltersCount = [filters.category, filters.source, filters.search].filter(Boolean).length;
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <div className="text-2xl text-white">Loading links...</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 py-8 sm:py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Animated background */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 py-8 px-4 sm:px-6 lg:px-8">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{animationDelay: '1.5s'}}></div>
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
-        <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 sm:p-8 animate-fadeIn">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-            <div>
+        {/* Header with Stats */}
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 sm:p-8 mb-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+            <div className="flex-1">
               <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
-                My Links
+                Link Library
               </h1>
-              <p className="text-gray-300 text-sm sm:text-base">
-                {filteredLinks.length} of {links.length} links
+              <div className="flex flex-wrap gap-4 text-sm text-gray-300">
+                <span className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  {filteredLinks.length} of {links.length} links
+                </span>
+                <span className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-yellow-400" />
+                  {favorites.size} favorites
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`px-4 py-2 rounded-xl font-semibold transition-all flex items-center gap-2 ${
+                  showFilters 
+                    ? 'bg-purple-500 text-white' 
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                } ${activeFiltersCount > 0 ? 'ring-2 ring-purple-400' : ''}`}
+              >
+                <Filter className="w-4 h-4" />
+                Filters
                 {activeFiltersCount > 0 && (
-                  <span className="ml-2 px-2 py-1 bg-purple-500/30 rounded-full text-xs">
-                    {activeFiltersCount} filter{activeFiltersCount > 1 ? 's' : ''} active
+                  <span className="bg-white/30 px-2 py-0.5 rounded-full text-xs">
+                    {activeFiltersCount}
                   </span>
                 )}
-              </p>
-            </div>
-            <div className="flex gap-3 w-full sm:w-auto">
-              <div className="flex gap-2 bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20">
+              </button>
+
+              <div className="flex gap-2 bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 rounded ${viewMode === 'grid' ? 'bg-purple-500 text-white' : 'text-gray-300 hover:text-white'} transition-all`}
-                  title="Grid view"
+                  className={`p-2 rounded-lg transition-all ${
+                    viewMode === 'grid' ? 'bg-purple-500 text-white' : 'text-gray-300 hover:text-white'
+                  }`}
                 >
-                  <Grid3x3 className="w-5 h-5" />
+                  <Grid3x3 className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 rounded ${viewMode === 'list' ? 'bg-purple-500 text-white' : 'text-gray-300 hover:text-white'} transition-all`}
-                  title="List view"
+                  className={`p-2 rounded-lg transition-all ${
+                    viewMode === 'list' ? 'bg-purple-500 text-white' : 'text-gray-300 hover:text-white'
+                  }`}
                 >
-                  <List className="w-5 h-5" />
+                  <List className="w-4 h-4" />
                 </button>
               </div>
+
+              <button
+                onClick={exportLinks}
+                className="bg-white/10 text-white px-4 py-2 rounded-xl font-semibold hover:bg-white/20 transition-all flex items-center gap-2"
+                title="Export links"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+
               <button
                 onClick={() => router.push("/")}
-                className="flex-1 sm:flex-none bg-gradient-to-r from-purple-500 to-pink-500 text-white py-2 px-4 sm:px-6 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg hover:scale-105 flex items-center justify-center gap-2"
+                className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-2 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all shadow-lg hover:scale-105 flex items-center gap-2"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="w-4 h-4" />
                 Add Link
               </button>
             </div>
           </div>
+        </div>
 
-          {error && (
-            <div className="mb-6 bg-red-500/20 backdrop-blur-sm border border-red-500/50 text-red-200 px-4 py-3 rounded-xl animate-shake">
-              {error}
-            </div>
-          )}
-
-          {/* Filters */}
-          <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-4 sm:p-6 mb-8 border border-white/10">
-            <div className="flex items-center gap-2 mb-4">
-              <Filter className="w-5 h-5 text-purple-300" />
-              <h2 className="text-lg font-semibold text-white">Filters</h2>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Filters Panel */}
+        {showFilters && (
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 mb-6 animate-slideDown">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2">
                   <Search className="w-4 h-4 inline mr-1" />
@@ -275,82 +388,140 @@ export default function LinksPage() {
                 <input
                   type="text"
                   value={filters.search}
-                  onChange={(e) =>
-                    setFilters({ ...filters, search: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all text-sm"
-                  placeholder="Search by title, tags..."
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-gray-400 transition-all"
+                  placeholder="Search..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">
-                  Category
-                </label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Category</label>
                 <select
                   value={filters.category}
-                  onChange={(e) =>
-                    setFilters({ ...filters, category: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white transition-all text-sm"
+                  onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 text-white"
                 >
                   <option value="" className="bg-slate-800">All Categories</option>
-                  {categories.map((category) => (
-                    <option key={category} value={category} className="bg-slate-800">
-                      {category.charAt(0).toUpperCase() + category.slice(1)}
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat} className="bg-slate-800">
+                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2">
-                  Source
-                </label>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Source</label>
                 <select
                   value={filters.source}
-                  onChange={(e) =>
-                    setFilters({ ...filters, source: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white transition-all text-sm"
+                  onChange={(e) => setFilters({ ...filters, source: e.target.value })}
+                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 text-white"
                 >
                   <option value="" className="bg-slate-800">All Sources</option>
-                  {sources.map((source) => (
-                    <option key={source} value={source} className="bg-slate-800">
-                      {source.charAt(0).toUpperCase() + source.slice(1)}
+                  {sources.map((src) => (
+                    <option key={src} value={src} className="bg-slate-800">
+                      {src.charAt(0).toUpperCase() + src.slice(1)}
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="flex items-end">
-                <button
-                  onClick={clearFilters}
-                  disabled={activeFiltersCount === 0}
-                  className="w-full bg-white/10 backdrop-blur-sm border border-white/20 text-white py-2 px-4 rounded-xl font-semibold hover:bg-white/20 transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2 text-sm"
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Visibility</label>
+                <select
+                  value={filters.visibility}
+                  onChange={(e) => setFilters({ ...filters, visibility: e.target.value })}
+                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 text-white"
                 >
-                  <X className="w-4 h-4" />
-                  Clear Filters
-                </button>
+                  <option value="" className="bg-slate-800">All</option>
+                  <option value="private" className="bg-slate-800">Private</option>
+                  <option value="public" className="bg-slate-800">Public</option>
+                  <option value="group" className="bg-slate-800">Group</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">Sort By</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="w-full px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl focus:ring-2 focus:ring-purple-500 text-white"
+                >
+                  <option value="newest" className="bg-slate-800">Newest First</option>
+                  <option value="oldest" className="bg-slate-800">Oldest First</option>
+                  <option value="title" className="bg-slate-800">Title (A-Z)</option>
+                  <option value="category" className="bg-slate-800">Category</option>
+                </select>
               </div>
             </div>
-          </div>
 
-          {/* Links Display */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filters.favorites}
+                  onChange={(e) => setFilters({ ...filters, favorites: e.target.checked })}
+                  className="w-4 h-4 rounded border-white/20 bg-white/10 text-purple-500 focus:ring-2 focus:ring-purple-500"
+                />
+                <Star className="w-4 h-4 text-yellow-400" />
+                Show Favorites Only
+              </label>
+
+              <button
+                onClick={clearFilters}
+                disabled={activeFiltersCount === 0}
+                className="bg-white/10 text-white px-4 py-2 rounded-xl font-semibold hover:bg-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <X className="w-4 h-4" />
+                Clear All Filters
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-500/20 backdrop-blur-sm border border-red-500/50 text-red-200 px-4 py-3 rounded-xl mb-6 animate-shake">
+            {error}
+          </div>
+        )}
+
+        {/* Bulk Actions */}
+        {selectedLinks.size > 0 && (
+          <div className="bg-purple-500/20 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 mb-6 flex items-center justify-between">
+            <span className="text-white font-semibold">
+              {selectedLinks.size} link{selectedLinks.size > 1 ? 's' : ''} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={handleBulkDelete}
+                className="bg-red-500/20 text-red-300 px-4 py-2 rounded-lg hover:bg-red-500/30 transition-all flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete
+              </button>
+              <button
+                onClick={() => setSelectedLinks(new Set())}
+                className="bg-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/20 transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Links Display */}
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 sm:p-8">
           {filteredLinks.length === 0 ? (
-            <div className="text-center py-16 animate-fadeIn">
+            <div className="text-center py-16">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-purple-500/20 mb-4">
                 <ExternalLink className="w-10 h-10 text-purple-300" />
               </div>
               <p className="text-gray-300 text-lg mb-2">
-                {links.length === 0
-                  ? "No links saved yet"
-                  : "No links match your filters"}
+                {links.length === 0 ? "No links saved yet" : "No links match your filters"}
               </p>
               <p className="text-gray-400 text-sm">
-                {links.length === 0
-                  ? "Add your first link to get started!"
-                  : "Try adjusting your filters"}
+                {links.length === 0 ? "Add your first link to get started!" : "Try adjusting your filters"}
               </p>
             </div>
           ) : (
@@ -361,73 +532,109 @@ export default function LinksPage() {
               {filteredLinks.map((link, index) => (
                 <div
                   key={link.id}
-                  className={`bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5 hover:bg-white/10 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/10 animate-fadeIn ${
+                  className={`group bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5 hover:bg-white/10 hover:border-white/20 transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10 ${
                     viewMode === 'list' ? 'flex gap-4' : ''
-                  }`}
-                  style={{animationDelay: `${index * 0.05}s`}}
+                  } ${selectedLinks.has(link.id) ? 'ring-2 ring-purple-500' : ''}`}
+                  style={{animation: `fadeIn 0.3s ease-out ${index * 0.05}s both`}}
                 >
-                  <div className={viewMode === 'list' ? 'flex-1' : ''}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-2xl">{getSourceIcon(link.source)}</span>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold border ${getCategoryColor(
-                            link.category
-                          )}`}
-                        >
-                          {link.category}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handleDelete(link.id)}
-                        className="text-red-400 hover:text-red-300 font-semibold transition-colors p-2 hover:bg-red-500/10 rounded-lg"
-                        title="Delete link"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <h3 className="text-lg font-bold text-white mb-2 line-clamp-2">
-                      {link.title || "Untitled Link"}
-                    </h3>
-
-                    {link.description && (
-                      <p className="text-gray-300 text-sm mb-3 line-clamp-2">
-                        {link.description}
-                      </p>
-                    )}
-
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-purple-300 hover:text-purple-200 text-sm font-medium break-all inline-flex items-center gap-1 hover:underline"
-                    >
-                      <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                      {link.url.length > 50 ? link.url.substring(0, 50) + '...' : link.url}
-                    </a>
-
-                    {link.tags && (
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {link.tags.split(",").slice(0, 3).map((tag, index) => (
-                          <span
-                            key={index}
-                            className="bg-purple-500/20 text-purple-200 px-2 py-1 rounded-lg text-xs border border-purple-500/30"
+                  {/* Selection Checkbox */}
+                  <div className={`flex items-start gap-3 ${viewMode === 'list' ? 'flex-1' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedLinks.has(link.id)}
+                      onChange={() => toggleSelectLink(link.id)}
+                      className="mt-1 w-4 h-4 rounded border-white/20 bg-white/10 text-purple-500 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                    />
+                    
+                    <div className="flex-1 min-w-0">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-3 gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-2xl">{getSourceIcon(link.source)}</span>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getCategoryColor(link.category)}`}>
+                            {link.category}
+                          </span>
+                          <span className="text-gray-400" title={link.visibility}>
+                            {getVisibilityIcon(link.visibility)}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => toggleFavorite(link.id)}
+                            className={`p-2 rounded-lg transition-all ${
+                              favorites.has(link.id)
+                                ? 'text-yellow-400 hover:text-yellow-300' 
+                                : 'text-gray-400 hover:text-yellow-400'
+                            }`}
+                            title={favorites.has(link.id) ? "Remove from favorites" : "Add to favorites"}
                           >
-                            #{tag.trim()}
-                          </span>
-                        ))}
-                        {link.tags.split(",").length > 3 && (
-                          <span className="text-gray-400 text-xs py-1">
-                            +{link.tags.split(",").length - 3} more
-                          </span>
-                        )}
+                            {favorites.has(link.id) ? <Star className="w-4 h-4 fill-current" /> : <StarOff className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </div>
-                    )}
 
-                    <div className="mt-3 text-xs text-gray-400 flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      Added {new Date(link.createdAt).toLocaleDateString()}
+                      {/* Content */}
+                      <h3 className="text-lg font-bold text-white mb-2 line-clamp-2 group-hover:text-purple-300 transition-colors">
+                        {link.title || "Untitled Link"}
+                      </h3>
+
+                      {link.description && (
+                        <p className="text-gray-300 text-sm mb-3 line-clamp-2">
+                          {link.description}
+                        </p>
+                      )}
+
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-300 hover:text-purple-200 text-sm font-medium break-all flex items-center gap-1 hover:underline mb-3"
+                      >
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        {link.url.length > 40 ? link.url.substring(0, 40) + '...' : link.url}
+                      </a>
+
+                      {/* Tags */}
+                      {link.tags && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {link.tags.split(",").slice(0, 3).map((tag, i) => (
+                            <span key={i} className="bg-purple-500/20 text-purple-200 px-2 py-1 rounded-lg text-xs border border-purple-500/30">
+                              #{tag.trim()}
+                            </span>
+                          ))}
+                          {link.tags.split(",").length > 3 && (
+                            <span className="text-gray-400 text-xs py-1">
+                              +{link.tags.split(",").length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                        <div className="text-xs text-gray-400 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(link.createdAt).toLocaleDateString()}
+                        </div>
+                        
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => copyToClipboard(link.url, link.id)}
+                            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                            title="Copy link"
+                          >
+                            {copiedId === link.id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(link.id)}
+                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
+                            title="Delete link"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -439,28 +646,15 @@ export default function LinksPage() {
 
       <style jsx>{`
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-5px); }
-          75% { transform: translateX(5px); }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-
-        .animate-fadeIn {
-          animation: fadeIn 0.5s ease-out forwards;
-        }
-
-        .animate-shake {
-          animation: shake 0.3s ease-in-out;
+        .animate-slideDown {
+          animation: slideDown 0.3s ease-out;
         }
       `}</style>
     </div>
